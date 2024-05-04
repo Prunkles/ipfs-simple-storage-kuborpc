@@ -1,0 +1,94 @@
+openapi: 3.0.3
+info:
+  title: Kubo Simple Storage
+  version: 0.0.1
+
+paths:
+  /add:
+    post:
+      summary: Add a file
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              description: A file
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: base64
+        required: true
+      responses:
+        200:
+          description: Ok
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cid:
+                    $ref: "#/components/schemas/Cid"
+                  newRootCid:
+                    $ref: "#/components/schemas/Cid"
+        500:
+          description: Internal Server Error
+      security:
+        - basicAuth: []
+  /remove/{cid}:
+    post:
+      summary: Remove a file
+      parameters:
+        - name: cid
+          in: path
+          required: true
+          schema:
+            type: string
+            example: "bafkreibm6jg3ux5qumhcn2b3flc3tyu6dmlb4xa7u5bf44yegnrjhc4yeq"
+      responses:
+        200:
+          description: Ok
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  newRootCid:
+                    $ref: "#/components/schemas/Cid"
+        404:
+          description: CID not found
+        500:
+          description: Internal Server Error
+      security:
+        - basicAuth: []
+  /list:
+    get:
+      summary: List all files
+      responses:
+        200:
+          description: Ok
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cids:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Cid"
+        500:
+          description: Internal Server Error
+      security:
+        - basicAuth: []
+
+components:
+  schemas:
+    Cid:
+      type: object
+      properties:
+        "/":
+          type: string
+          example: "bafkreibm6jg3ux5qumhcn2b3flc3tyu6dmlb4xa7u5bf44yegnrjhc4yeq"
+  securitySchemes:
+    basicAuth:
+      type: http
+      scheme: basic
