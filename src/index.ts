@@ -5,6 +5,8 @@ import logger from "morgan"
 import multer from "multer";
 import * as kuboRpcClient from "kubo-rpc-client"
 import {CID, IPFSPath, KuboRPCClient} from "kubo-rpc-client";
+import {Ok, Err, Result} from "ts-results-es";
+
 
 const configPath = process.env.CONFIG ?? "./config.json"
 const config = JSON.parse(fs.readFileSync(configPath).toString())
@@ -64,18 +66,33 @@ async function ipfsFilesExists(kuboClient: KuboRPCClient, ipfsPath: IPFSPath) {
     }
 }
 
+function tryParseCID(input: string): Result<CID, Error> {
+    try {
+        return new Ok(CID.parse(input))
+    } catch (err) {
+        return new Err(err)
+    }
+}
+
 app.post('/remove/:cid',
     expressBasicAuth({ users: basicAuthUsers }),
     async (req, res) => {
         try {
             const cidStr = req.params.cid.toString()
+            const cidRes = tryParseCID(cidStr)
+            if (cidRes.isErr()) {
+                res.status(400)
+                res.send(`'${cidStr}' is not a CID: ${cidRes.error}`)
+                return
+            }
+            const cid = cidRes.value
             const exists = await ipfsFilesExists(kuboClient, `${ipfsMfsRoot}/${cidStr}`)
             if (!exists) {
                 res.status(404)
                 res.send(`'${cidStr}' not found`)
                 return
             }
-            await kuboClient.pin.rm(cidStr)
+            await kuboClient.pin.rm(cid)
             await kuboClient.files.rm(`${ipfsMfsRoot}/${cidStr}`)
             const mfsRootStatRes = await kuboClient.files.stat(ipfsMfsRoot)
             res.status(200)
