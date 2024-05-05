@@ -128,6 +128,17 @@ app.get('/list',
 )
 
 const port = process.env.PORT ?? 8080
-app.listen(port, () => {
+const server = app.listen(port, () => {
     console.log(`Listening on ${port}`)
 })
+
+// https://emmer.dev/blog/you-don-t-need-an-init-system-for-node.js-in-docker/
+const shutdown = () => {
+    console.log("Stopping...")
+    server.close(() => {
+        console.log("Stopped")
+    })
+}
+process.on("SIGINT", shutdown)
+process.on("SIGTERM", shutdown)
+
