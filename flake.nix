@@ -17,9 +17,16 @@
           npmDepsHash = "sha256-w3LcQsEjoTOsbV41mjG9NJlafjbdNkhB/obA9iyA5to=";
         };
         packages.default = packages.kubo-simple-storage;
-        packages.kubo-simple-storage-docker-image = pkgs.dockerTools.buildImage {
+        packages.kubo-simple-storage-docker-image = pkgs.dockerTools.buildLayeredImage {
           name = "kubo-simple-storage";
+          contents = [
+            pkgs.busybox
+            pkgs.cacert
+          ];
           config = {
+            Env = [
+              "SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
+            ];
             Cmd = [ "${packages.kubo-simple-storage}/bin/kubo-simple-storage" ];
           };
         };
