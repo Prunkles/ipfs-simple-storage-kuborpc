@@ -16,7 +16,7 @@ paths:
               properties:
                 file:
                   type: string
-                  format: base64
+                  format: binary
         required: true
       responses:
         200:
