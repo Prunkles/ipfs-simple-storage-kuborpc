@@ -88,8 +88,12 @@ app.post('/remove/:cid',
             const cid = cidRes.value
             const exists = await ipfsFilesExists(kuboClient, `${ipfsMfsRoot}/${cidStr}`)
             if (!exists) {
-                res.status(404)
-                res.send(`'${cidStr}' not found`)
+                res.status(404).contentType('application/problem+json').json({
+                    type: '/content-not-found',
+                    title: 'Content not found',
+                    details: `Content ${cid.toString()} not found`,
+                    cid: cid.toString(),
+                })
                 return
             }
             await kuboClient.pin.rm(cid)

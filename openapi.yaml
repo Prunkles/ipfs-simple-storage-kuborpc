@@ -55,7 +55,7 @@ paths:
                   newRootCid:
                     $ref: "#/components/schemas/Cid"
         404:
-          description: CID not found
+          description: Content not found
         500:
           description: Internal Server Error
       security:
