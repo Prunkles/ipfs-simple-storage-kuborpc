@@ -27,31 +27,9 @@ app.use(logger('dev'))
 app.use(express.json())
 app.use(express.urlencoded({ extended: false }))
 
-app.post('/add',
-    expressBasicAuth({ users: basicAuthUsers }),
-    upload.single("file"),
-    async (req, res) => {
-        try {
-            const buffer = req.file.buffer
-            const addRes = await kuboClient.add(buffer, {
-                cidVersion: 1,
-                chunker: "size-1048576",
-            })
-            await kuboClient.files.cp(addRes.cid, `${ipfsMfsRoot}/${addRes.cid.toString()}`)
-            const mfsRootStatRes = await kuboClient.files.stat(ipfsMfsRoot)
-            res.status(200)
-            res.contentType("application/json")
-            res.send(JSON.stringify({
-                cid: addRes.cid,
-                newRootCid: mfsRootStatRes.cid,
-            }))
-        } catch (error) {
-            console.error(error)
-            res.status(500)
-            res.send(error.toString())
-        }
-    }
-)
+function getFilePathFromRoot(ipfsMfsRoot: string, cid: CID): string {
+    return `${ipfsMfsRoot}/${cid.toString()}`
+}
 
 async function ipfsFilesExists(kuboClient: KuboRPCClient, ipfsPath: IPFSPath) {
     try {
@@ -65,6 +43,42 @@ async function ipfsFilesExists(kuboClient: KuboRPCClient, ipfsPath: IPFSPath) {
         }
     }
 }
+
+app.post('/add',
+    expressBasicAuth({ users: basicAuthUsers }),
+    upload.single("file"),
+    async (req, res) => {
+        try {
+            const buffer = req.file.buffer
+            const addRes = await kuboClient.add(buffer, {
+                cidVersion: 1,
+                chunker: "size-1048576",
+            })
+            const cid = addRes.cid
+            if (await ipfsFilesExists(kuboClient, getFilePathFromRoot(ipfsMfsRoot, cid))) {
+                return res.status(409).contentType('application/problem+json').json({
+                    type: '/content-already-exists',
+                    title: 'Content already exists',
+                    details: `Content ${cid.toString()} already exists`,
+                    cid: cid.toString(),
+                })
+            }
+
+            await kuboClient.files.cp(cid, getFilePathFromRoot(ipfsMfsRoot, cid))
+            const mfsRootStatRes = await kuboClient.files.stat(ipfsMfsRoot)
+            res.status(200)
+            res.contentType("application/json")
+            res.send(JSON.stringify({
+                cid: cid,
+                newRootCid: mfsRootStatRes.cid,
+            }))
+        } catch (error) {
+            console.error(error)
+            res.status(500)
+            res.send(error.toString())
+        }
+    }
+)
 
 function tryParseCID(input: string): Result<CID, Error> {
     try {
@@ -86,7 +100,7 @@ app.post('/remove/:cid',
                 return
             }
             const cid = cidRes.value
-            const exists = await ipfsFilesExists(kuboClient, `${ipfsMfsRoot}/${cidStr}`)
+            const exists = await ipfsFilesExists(kuboClient, getFilePathFromRoot(ipfsMfsRoot, cid))
             if (!exists) {
                 res.status(404).contentType('application/problem+json').json({
                     type: '/content-not-found',
@@ -97,7 +111,7 @@ app.post('/remove/:cid',
                 return
             }
             await kuboClient.pin.rm(cid)
-            await kuboClient.files.rm(`${ipfsMfsRoot}/${cidStr}`)
+            await kuboClient.files.rm(getFilePathFromRoot(ipfsMfsRoot, cid))
             const mfsRootStatRes = await kuboClient.files.stat(ipfsMfsRoot)
             res.status(200)
             res.contentType("application/json")

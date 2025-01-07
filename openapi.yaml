@@ -30,6 +30,18 @@ paths:
                     $ref: "#/components/schemas/Cid"
                   newRootCid:
                     $ref: "#/components/schemas/Cid"
+        409:
+          description: File already exists
+          content:
+            application/problem+json:
+              schema:
+                type: object
+                properties:
+                  type:
+                    type: string
+                    enum: [ "/content-already-exists" ]
+                  cid:
+                    $ref: "#/components/schemas/Cid"
         500:
           description: Internal Server Error
       security:
