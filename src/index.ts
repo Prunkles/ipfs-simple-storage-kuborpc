@@ -130,13 +130,15 @@ app.get('/list',
     expressBasicAuth({ users: basicAuthUsers }),
     async (req, res) => {
         try {
+            const rootCid = (await kuboClient.files.stat(ipfsMfsRoot)).cid
             const cids: CID[] = []
             for await (const entry of kuboClient.files.ls(`${ipfsMfsRoot}`)) {
                 cids.push(entry.cid)
             }
-            res.status(200)
-            res.contentType("application/json")
-            res.send(JSON.stringify({ cids }))
+            res.status(200).json({
+                rootCid,
+                cids,
+            })
         } catch (error) {
             console.error(error)
             res.status(500)
