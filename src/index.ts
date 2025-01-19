@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import express from "express"
 import expressBasicAuth from "express-basic-auth";
-import logger from "morgan"
+import morgan from "morgan"
 import multer from "multer";
 import * as kuboRpcClient from "kubo-rpc-client"
 import {CID, IPFSPath, KuboRPCClient} from "kubo-rpc-client";
@@ -26,7 +26,14 @@ const mutex = new Mutex()
 const app = express()
 const upload = multer()
 
-app.use(logger('dev'))
+app.use((req, res, next) => {
+    (req as any).requestId = uuidv4()
+    next()
+})
+morgan.token('requestId', req => (req as any).requestId)
+app.use(morgan('--> :requestId ":method :url HTTP/:http-version"', {immediate: true}))
+app.use(morgan('<-- :requestId ":method :url HTTP/:http-version" :status :res[content-length] - :response-time ms', {immediate: false}))
+
 app.use(express.json())
 app.use(express.urlencoded({ extended: false }))
 
