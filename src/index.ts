@@ -41,9 +41,9 @@ function getFilePathFromRoot(ipfsMfsRoot: string, cid: CID): string {
     return `${ipfsMfsRoot}/${cid.toString()}`
 }
 
-async function ipfsFilesExists(kuboClient: KuboRPCClient, ipfsPath: IPFSPath) {
+async function ipfsFilesExists(kuboClient: KuboRPCClient, ipfsPath: IPFSPath, abortSignal?: AbortSignal) {
     try {
-        await kuboClient.files.stat(ipfsPath)
+        await kuboClient.files.stat(ipfsPath, {signal: abortSignal})
         return true
     } catch (err) {
         if (err.message === "file does not exist") {
@@ -59,25 +59,30 @@ app.post('/add',
     upload.single("file"),
     async (req, res) => {
         try {
+            const abortController = new AbortController()
+            req.on('close', () => abortController.abort())
+            const abortSignal = abortController.signal
+
             await mutex.runExclusive(async () => {
                 const buffer = req.file.buffer
                 const tmpFilePath = `${ipfsMfsRoot}/tmp_${uuidv4()}`
                 console.log(`Adding a content to file ${tmpFilePath}`)
                 const addRes = await kuboClient.add(buffer, {
+                    signal: abortSignal,
                     cidVersion: 1,
                     chunker: "size-1048576",
                     pin: false,
                     ...{
                         'to-files': tmpFilePath,
-                    } as any
+                    } as any,
                 })
                 const cid = addRes.cid
                 console.log(`Added ${cid.toString()} to file ${tmpFilePath}`)
 
                 const filePath = getFilePathFromRoot(ipfsMfsRoot, cid)
-                if (await ipfsFilesExists(kuboClient, filePath)) {
+                if (await ipfsFilesExists(kuboClient, filePath, abortSignal)) {
                     console.log(`Path ${filePath} already exists. Removing ${tmpFilePath}`)
-                    await kuboClient.files.rm(tmpFilePath)
+                    await kuboClient.files.rm(tmpFilePath, {signal: abortSignal})
                     return res.status(409).contentType('application/problem+json').json({
                         type: '/content-already-exists',
                         title: 'Content already exists',
@@ -87,10 +92,10 @@ app.post('/add',
                 }
 
                 console.log(`Moving file ${tmpFilePath} to ${filePath}`)
-                await kuboClient.files.mv(tmpFilePath, filePath)
+                await kuboClient.files.mv(tmpFilePath, filePath, {signal: abortSignal})
                 console.log(`Moved file ${tmpFilePath} to ${filePath}`)
 
-                const mfsRootStatRes = await kuboClient.files.stat(ipfsMfsRoot)
+                const mfsRootStatRes = await kuboClient.files.stat(ipfsMfsRoot, {signal: abortSignal})
                 console.log(`New root is ${mfsRootStatRes.cid.toString()}`)
                 res.status(200).json({
                     cid: cid,
@@ -116,6 +121,10 @@ app.post('/remove/:cid',
     expressBasicAuth({ users: basicAuthUsers }),
     async (req, res) => {
         try {
+            const abortController = new AbortController()
+            req.on('close', () => abortController.abort())
+            const abortSignal = abortController.signal
+
             await mutex.runExclusive(async () => {
                 const cidStr = req.params.cid.toString()
                 const cidRes = tryParseCID(cidStr)
@@ -127,7 +136,7 @@ app.post('/remove/:cid',
                 const cid = cidRes.value
                 console.log(`Removing ${cid.toString()}`)
 
-                const exists = await ipfsFilesExists(kuboClient, getFilePathFromRoot(ipfsMfsRoot, cid))
+                const exists = await ipfsFilesExists(kuboClient, getFilePathFromRoot(ipfsMfsRoot, cid), abortSignal)
                 if (!exists) {
                     console.log(`${cid.toString()} not found`)
                     res.status(404).contentType('application/problem+json').json({
@@ -141,9 +150,9 @@ app.post('/remove/:cid',
 
                 const filePath = getFilePathFromRoot(ipfsMfsRoot, cid)
                 console.log(`Removing file ${filePath}`)
-                await kuboClient.files.rm(filePath)
+                await kuboClient.files.rm(filePath, {signal: abortSignal})
 
-                const mfsRootStatRes = await kuboClient.files.stat(ipfsMfsRoot)
+                const mfsRootStatRes = await kuboClient.files.stat(ipfsMfsRoot, {signal: abortSignal})
                 console.log(`New root is ${mfsRootStatRes.cid.toString()}`)
                 res.status(200).json({
                     newRootCid: mfsRootStatRes.cid,
@@ -161,10 +170,14 @@ app.get('/list',
     expressBasicAuth({ users: basicAuthUsers }),
     async (req, res) => {
         try {
+            const abortController = new AbortController()
+            req.on('close', () => abortController.abort())
+            const abortSignal = abortController.signal
+
             await mutex.runExclusive(async () => {
-                const rootCid = (await kuboClient.files.stat(ipfsMfsRoot)).cid
+                const rootCid = (await kuboClient.files.stat(ipfsMfsRoot, {signal: abortSignal})).cid
                 const cids: CID[] = []
-                for await (const entry of kuboClient.files.ls(`${ipfsMfsRoot}`)) {
+                for await (const entry of kuboClient.files.ls(`${ipfsMfsRoot}`, {signal: abortSignal})) {
                     if (!entry.name.startsWith('tmp_')) {
                         cids.push(entry.cid)
                     }
