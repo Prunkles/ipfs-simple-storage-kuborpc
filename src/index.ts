@@ -195,6 +195,21 @@ app.get('/list',
     }
 )
 
+app.get('/healthz',
+    expressBasicAuth({ users: basicAuthUsers }),
+    async (req, res) => {
+        try {
+            await mutex.runExclusive(async () => {
+                res.send('OK')
+            })
+        } catch (error) {
+            console.error(error)
+            res.status(500)
+            res.send(error.toString())
+        }
+    }
+)
+
 const port = process.env.PORT ?? 8080
 const server = app.listen(port, () => {
     console.log(`Listening on ${port}`)
