@@ -14,7 +14,7 @@
           pname = "kubo-simple-storage";
           version = "0.0.1";
           src = ./.;
-          npmDepsHash = "sha256-VV4llvzNW1q3bC94R1o2j/12YS9eCQP957NBMdAHUiA=";
+          npmDepsHash = "sha256-RlRpCzWozo2hCg4o/Q2Ka/DihskWwLBeXHpgOLhledQ=";
         };
         packages.default = packages.kubo-simple-storage;
         packages.kubo-simple-storage-docker-image = pkgs.dockerTools.buildLayeredImage {
