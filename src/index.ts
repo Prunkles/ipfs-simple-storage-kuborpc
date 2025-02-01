@@ -191,9 +191,10 @@ app.get('/healthz',
     }
 )
 
-const port = process.env.PORT ?? 8080
-const server = app.listen(port, () => {
-    console.log(`Listening on ${port}`)
+const port = parseInt(process.env.PORT ?? '8080')
+const address = process.env.ADDRESS ?? '0.0.0.0'
+const server = app.listen(port, address, () => {
+    console.log(`Listening on ${address}:${port}`)
 })
 
 // https://emmer.dev/blog/you-don-t-need-an-init-system-for-node.js-in-docker/
