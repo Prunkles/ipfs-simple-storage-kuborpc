@@ -61,34 +61,28 @@ app.post('/add',
         try {
             await mutex.runExclusive(async () => {
                 const buffer = req.file.buffer
-                const tmpFilePath = `${ipfsMfsRoot}/tmp_${uuidv4()}`
-                console.log(`Adding a content to file ${tmpFilePath}`)
+                console.log(`Adding a content`)
                 const addRes = await kuboClient.add(buffer, {
-                    cidVersion: 1,
-                    chunker: "size-1048576",
                     pin: false,
-                    ...{
-                        'to-files': tmpFilePath,
-                    } as any
                 })
                 const cid = addRes.cid
-                console.log(`Added ${cid.toString()} to file ${tmpFilePath}`)
+                console.log(`Added content ${addRes.cid.toString()}`)
+                // FIXME: Possible GC before copied to MFS
 
                 const filePath = getFilePathFromRoot(ipfsMfsRoot, cid)
                 if (await ipfsFilesExists(kuboClient, filePath)) {
-                    console.log(`Path ${filePath} already exists. Removing ${tmpFilePath}`)
-                    await kuboClient.files.rm(tmpFilePath)
+                    console.log(`Path ${filePath} already exists`)
                     return res.status(409).contentType('application/problem+json').json({
                         type: '/content-already-exists',
                         title: 'Content already exists',
-                        details: `Content ${cid.toString()} already exists`,
+                        details: `Content ${cid} already exists`,
                         cid: cid.toString(),
                     })
                 }
 
-                console.log(`Moving file ${tmpFilePath} to ${filePath}`)
-                await kuboClient.files.mv(tmpFilePath, filePath)
-                console.log(`Moved file ${tmpFilePath} to ${filePath}`)
+                console.log(`Copying content ${cid} to path ${filePath}`)
+                await kuboClient.files.cp(cid, filePath)
+                console.log(`Copied content ${cid} to path ${filePath}`)
 
                 const mfsRootStatRes = await kuboClient.files.stat(ipfsMfsRoot)
                 console.log(`New root is ${mfsRootStatRes.cid.toString()}`)
