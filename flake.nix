@@ -14,7 +14,7 @@
           pname = "ipfs-simple-storage-kuborpc";
           version = "0.0.1";
           src = ./.;
-          npmDepsHash = "sha256-RlRpCzWozo2hCg4o/Q2Ka/DihskWwLBeXHpgOLhledQ=";
+          npmDepsHash = "sha256-lBeyiHgoU88cMTQyZX3gqIml5cJlIFluff52LrMU/EM=";
         };
         packages.default = packages.ipfs-simple-storage-kuborpc;
         packages.ipfs-simple-storage-kuborpc-docker-image = pkgs.dockerTools.buildLayeredImage {
