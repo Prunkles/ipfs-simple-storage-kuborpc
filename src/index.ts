@@ -61,21 +61,21 @@ app.post('/add',
         try {
             await mutex.runExclusive(async () => {
                 const buffer = req.file.buffer
-                console.log(`Adding a content`)
+                console.log(`Adding an object content`)
                 const addRes = await kuboClient.add(buffer, {
                     pin: false,
                 })
                 const cid = addRes.cid
-                console.log(`Added content ${addRes.cid.toString()}`)
+                console.log(`Added object content ${addRes.cid.toString()}`)
                 // FIXME: Possible GC before copied to MFS
 
                 const filePath = getFilePathFromRoot(ipfsMfsRoot, cid)
                 if (await ipfsFilesExists(kuboClient, filePath)) {
                     console.log(`Path ${filePath} already exists`)
                     return res.status(409).contentType('application/problem+json').json({
-                        type: '/content-already-exists',
-                        title: 'Content already exists',
-                        details: `Content ${cid} already exists`,
+                        type: '/problems/object-content-already-exists',
+                        title: 'Object content already exists',
+                        details: `Object content ${cid} already exists`,
                         cid: cid.toString(),
                     })
                 }
@@ -87,8 +87,8 @@ app.post('/add',
                 const mfsRootStatRes = await kuboClient.files.stat(ipfsMfsRoot)
                 console.log(`New root is ${mfsRootStatRes.cid.toString()}`)
                 res.status(200).json({
-                    cid: cid,
-                    newRootCid: mfsRootStatRes.cid,
+                    objectCid: cid,
+                    newBucketRootCid: mfsRootStatRes.cid,
                 })
             })
         } catch (error) {
@@ -114,8 +114,10 @@ app.post('/remove/:cid',
                 const cidStr = req.params.cid.toString()
                 const cidRes = tryParseCID(cidStr)
                 if (cidRes.isErr()) {
-                    res.status(400)
-                    res.send(`'${cidStr}' is not a CID: ${cidRes.error}`)
+                    res.status(400).contentType('application/problem+json').json({
+                        type: '/problems/invalid-cid',
+                        error: cidRes.error,
+                    })
                     return
                 }
                 const cid = cidRes.value
@@ -125,9 +127,9 @@ app.post('/remove/:cid',
                 if (!exists) {
                     console.log(`${cid.toString()} not found`)
                     res.status(404).contentType('application/problem+json').json({
-                        type: '/content-not-found',
-                        title: 'Content not found',
-                        details: `Content ${cid.toString()} not found`,
+                        type: '/problems/object-not-found',
+                        title: 'Object not found',
+                        details: `Object ${cid.toString()} not found`,
                         cid: cid.toString(),
                     })
                     return
@@ -140,13 +142,12 @@ app.post('/remove/:cid',
                 const mfsRootStatRes = await kuboClient.files.stat(ipfsMfsRoot)
                 console.log(`New root is ${mfsRootStatRes.cid.toString()}`)
                 res.status(200).json({
-                    newRootCid: mfsRootStatRes.cid,
+                    newBucketRootCid: mfsRootStatRes.cid,
                 })
             })
         } catch (error) {
             console.error(error)
-            res.status(500)
-            res.send(error.toString())
+            res.status(500).send(error.toString())
         }
     }
 )
@@ -156,16 +157,16 @@ app.get('/list',
     async (req, res) => {
         try {
             await mutex.runExclusive(async () => {
-                const rootCid = (await kuboClient.files.stat(ipfsMfsRoot)).cid
-                const cids: CID[] = []
+                const bucketRootCid = (await kuboClient.files.stat(ipfsMfsRoot)).cid
+                const objectCids: CID[] = []
                 for await (const entry of kuboClient.files.ls(`${ipfsMfsRoot}`)) {
                     if (!entry.name.startsWith('tmp_')) {
-                        cids.push(entry.cid)
+                        objectCids.push(entry.cid)
                     }
                 }
                 res.status(200).json({
-                    rootCid,
-                    cids,
+                    bucketRootCid,
+                    objectCids,
                 })
             })
         } catch (error) {
