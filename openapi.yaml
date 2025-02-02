@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  title: Kubo Simple Storage
+  title: IPFS Simple Storage (Kubo RPC)
   version: 0.0.1
 
 paths:
