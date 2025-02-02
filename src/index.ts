@@ -157,13 +157,14 @@ app.get('/list',
     async (req, res) => {
         try {
             await mutex.runExclusive(async () => {
+                console.log('Listing all objects')
                 const bucketRootCid = (await kuboClient.files.stat(ipfsMfsRoot)).cid
+                console.log(`Bucket root cid is ${bucketRootCid}`)
                 const objectCids: CID[] = []
-                for await (const entry of kuboClient.files.ls(`${ipfsMfsRoot}`)) {
-                    if (!entry.name.startsWith('tmp_')) {
-                        objectCids.push(entry.cid)
-                    }
+                for await (const entry of kuboClient.ls(bucketRootCid)) {
+                    objectCids.push(entry.cid)
                 }
+                console.log(`Listed ${objectCids.length} objects`)
                 res.status(200).json({
                     bucketRootCid,
                     objectCids,
