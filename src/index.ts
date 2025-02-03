@@ -1,4 +1,5 @@
 import * as fs from "node:fs";
+import type { Request as ExpressRequest } from "express"
 import express from "express"
 import expressBasicAuth from "express-basic-auth";
 import morgan from "morgan"
@@ -37,13 +38,22 @@ app.use(morgan('<-- :requestId ":method :url HTTP/:http-version" :status :res[co
 app.use(express.json())
 app.use(express.urlencoded({ extended: false }))
 
+function createExpressRequestAbortSignal(req: ExpressRequest) {
+    const abortController = new AbortController()
+    req.socket.on('close', () => {
+        const requestId = (req as any).requestId
+        abortController.abort(new Error(`Request ${requestId} aborted`))
+    })
+    return abortController.signal
+}
+
 function getFilePathFromRoot(ipfsMfsRoot: string, cid: CID): string {
     return `${ipfsMfsRoot}/${cid.toString()}`
 }
 
-async function ipfsFilesExists(kuboClient: KuboRPCClient, ipfsPath: IPFSPath) {
+async function ipfsFilesExists(kuboClient: KuboRPCClient, ipfsPath: IPFSPath, abortSignal?: AbortSignal) {
     try {
-        await kuboClient.files.stat(ipfsPath)
+        await kuboClient.files.stat(ipfsPath, { signal: abortSignal })
         return true
     } catch (err) {
         if (err.message === "file does not exist") {
@@ -59,18 +69,22 @@ app.post('/add',
     upload.single("file"),
     async (req, res) => {
         try {
+            const abortSignal = createExpressRequestAbortSignal(req)
             await mutex.runExclusive(async () => {
+                abortSignal.throwIfAborted()
+
                 const buffer = req.file.buffer
                 console.log(`Adding an object content`)
                 const addRes = await kuboClient.add(buffer, {
                     pin: false,
+                    signal: abortSignal,
                 })
                 const cid = addRes.cid
                 console.log(`Added object content ${addRes.cid.toString()}`)
                 // FIXME: Possible GC before copied to MFS
 
                 const filePath = getFilePathFromRoot(ipfsMfsRoot, cid)
-                if (await ipfsFilesExists(kuboClient, filePath)) {
+                if (await ipfsFilesExists(kuboClient, filePath, abortSignal)) {
                     console.log(`Path ${filePath} already exists`)
                     return res.status(409).contentType('application/problem+json').json({
                         type: '/problems/object-content-already-exists',
@@ -81,10 +95,10 @@ app.post('/add',
                 }
 
                 console.log(`Copying content ${cid} to path ${filePath}`)
-                await kuboClient.files.cp(cid, filePath)
+                await kuboClient.files.cp(cid, filePath, { signal: abortSignal })
                 console.log(`Copied content ${cid} to path ${filePath}`)
 
-                const mfsRootStatRes = await kuboClient.files.stat(ipfsMfsRoot)
+                const mfsRootStatRes = await kuboClient.files.stat(ipfsMfsRoot, { signal: abortSignal })
                 console.log(`New root is ${mfsRootStatRes.cid.toString()}`)
                 res.status(200).json({
                     objectCid: cid,
@@ -110,7 +124,10 @@ app.post('/remove/:cid',
     expressBasicAuth({ users: basicAuthUsers }),
     async (req, res) => {
         try {
+            const abortSignal = createExpressRequestAbortSignal(req)
             await mutex.runExclusive(async () => {
+                abortSignal.throwIfAborted()
+
                 const cidStr = req.params.cid.toString()
                 const cidRes = tryParseCID(cidStr)
                 if (cidRes.isErr()) {
@@ -123,7 +140,7 @@ app.post('/remove/:cid',
                 const cid = cidRes.value
                 console.log(`Removing ${cid.toString()}`)
 
-                const exists = await ipfsFilesExists(kuboClient, getFilePathFromRoot(ipfsMfsRoot, cid))
+                const exists = await ipfsFilesExists(kuboClient, getFilePathFromRoot(ipfsMfsRoot, cid), abortSignal)
                 if (!exists) {
                     console.log(`${cid.toString()} not found`)
                     res.status(404).contentType('application/problem+json').json({
@@ -137,9 +154,9 @@ app.post('/remove/:cid',
 
                 const filePath = getFilePathFromRoot(ipfsMfsRoot, cid)
                 console.log(`Removing file ${filePath}`)
-                await kuboClient.files.rm(filePath)
+                await kuboClient.files.rm(filePath, { signal: abortSignal })
 
-                const mfsRootStatRes = await kuboClient.files.stat(ipfsMfsRoot)
+                const mfsRootStatRes = await kuboClient.files.stat(ipfsMfsRoot, { signal: abortSignal })
                 console.log(`New root is ${mfsRootStatRes.cid.toString()}`)
                 res.status(200).json({
                     newBucketRootCid: mfsRootStatRes.cid,
@@ -156,12 +173,15 @@ app.get('/list',
     expressBasicAuth({ users: basicAuthUsers }),
     async (req, res) => {
         try {
+            const abortSignal = createExpressRequestAbortSignal(req)
             await mutex.runExclusive(async () => {
+                abortSignal.throwIfAborted()
+
                 console.log('Listing all objects')
-                const bucketRootCid = (await kuboClient.files.stat(ipfsMfsRoot)).cid
+                const bucketRootCid = (await kuboClient.files.stat(ipfsMfsRoot, { signal: abortSignal })).cid
                 console.log(`Bucket root cid is ${bucketRootCid}`)
                 const objectCids: CID[] = []
-                for await (const entry of kuboClient.ls(bucketRootCid)) {
+                for await (const entry of kuboClient.ls(bucketRootCid, { signal: abortSignal })) {
                     objectCids.push(entry.cid)
                 }
                 console.log(`Listed ${objectCids.length} objects`)
@@ -172,8 +192,7 @@ app.get('/list',
             })
         } catch (error) {
             console.error(error)
-            res.status(500)
-            res.send(error.toString())
+            res.status(500).send(error.toString())
         }
     }
 )
@@ -182,13 +201,14 @@ app.get('/healthz',
     expressBasicAuth({ users: basicAuthUsers }),
     async (req, res) => {
         try {
+            const abortSignal = createExpressRequestAbortSignal(req)
             await mutex.runExclusive(async () => {
+                abortSignal.throwIfAborted()
                 res.send('OK')
             })
         } catch (error) {
             console.error(error)
-            res.status(500)
-            res.send(error.toString())
+            res.status(500).send(error.toString())
         }
     }
 )
